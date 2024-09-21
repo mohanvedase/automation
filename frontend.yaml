@@ -1,0 +1,100 @@
+---
+- name: Deploy Frontend
+  hosts: frontend
+  become: yes
+
+  tasks:
+    - name: Install curl for adding Node.js repository
+      apt:
+        name: curl
+        state: present
+
+    - name: Install Node.js and npm
+      apt:
+        name:
+          - nodejs
+          - npm
+        state: present
+        update_cache: yes
+
+    - name: Install build-essential for compiling npm modules
+      apt:
+        name: build-essential
+        state: present
+
+    - name: Install Git
+      apt:
+        name: git
+        state: present
+
+    - name: Clean up the existing backend directory
+      file:
+        path: /home/ubuntu/TravelMemory/backend
+        state: absent
+        force: yes
+
+    - name: Clean up the existing code directory
+      file:
+        path: /home/ubuntu/TravelMemory
+        state: absent
+        force: yes
+
+    - name: Clone the frontend code from Git
+      git:
+        repo: 'https://github.com/UnpredictablePrashant/TravelMemory.git'
+        dest: /home/ubuntu/TravelMemory
+        version: "main"
+        force: yes  # Force clone if there are existing changes
+        update: yes
+
+    - name: Update backend IP in frontend's url.js
+      lineinfile:
+        path: /home/ubuntu/TravelMemory/frontend/src/url.js
+        regexp: 'http://35.183.5.155:3000'
+        line: 'export const baseUrl = process.env.REACT_APP_BACKEND_URL || "http://35.183.5.155:3000";'
+
+    - name: Install npm dependencies for frontend
+      command: npm install
+      args:
+        chdir: /home/ubuntu/TravelMemory/frontend
+
+    - name: Install Nginx for reverse proxy
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Remove default Nginx configuration
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Create custom Nginx configuration for reverse proxy
+      copy:
+        dest: /etc/nginx/sites-available/custom_server.conf
+        content: |
+          server {
+              listen 80;
+              location / {
+                  proxy_pass http://35.182.251.102:3001;
+              }
+          }
+
+    - name: Enable custom Nginx configuration
+      file:
+        src: /etc/nginx/sites-available/custom_server.conf
+        dest: /etc/nginx/sites-enabled/custom_server.conf
+        state: link
+
+    - name: Test Nginx configuration
+      command: nginx -t
+
+    - name: Restart Nginx service
+      service:
+        name: nginx
+        state: restarted
+
+    - name: Start the frontend application
+      shell: nohup npm start &  # Run npm start in the background
+      args:
+        chdir: /home/ubuntu/TravelMemory/frontend
